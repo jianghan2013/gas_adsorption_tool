@@ -342,38 +342,56 @@ def BJH_main(p,Q,pmin=0.30,pmax=0.999,use_pressure=True,gas_type='N2'):
 #------------------------- class ---------------------------------------
 
 class BJH_method():
-    def __init__(self, p, q, pmin=0.30, pmax=0.999, use_pressure=True, gas_type='N2'):
+    def __init__(self, pmin=0.30, pmax=0.999, use_pressure=True, gas_type='N2'):
+        # settings 
+        self.opts = dict()
+        self.opts['gas_type'] = gas_type
+        self.opts['use_pressure'] = use_pressure
+        self.opts['pmin'] = pmin
+        self.opts['pmax'] = pmax
+        for i, key in enumerate(self.opts):
+            print('arg{} name: {}, value: {}'.format(i,key,self.opts[key]) )        
+        # input
+        self.p_raw, self.q_raw = None, None
+        self.p, self.q = None, None 
+        
+        # output
+        self.vpore_total, self.vpore_micro, self.vpore_meso = None, None, None
+        self.Davg, self.Vp, self.Vp_ccum, self.Vp_dlogD = None, None, None, None
+
+
+        
+    def fit(self, p, q):
+
         self.p_raw = p 
         self.q_raw = q
         self.p = p
         self.q = q
-        self.gas_type = gas_type
-        self.use_pressure = use_pressure
-        if use_pressure:
-            self.p, self.q = use_my_pressure_points(self.p_raw, self.q_raw, self.gas_type)
+        # interpolate the points
+        if self.opts['use_pressure']:
+            print('will interpolate the points')
+            self.p, self.q = use_my_pressure_points(self.p_raw, self.q_raw, self.opts['gas_type'])
         else:
             self.p, self.q = self.p_raw,self.q_raw
-        self.p_res, self.q_res = restrict_isotherm(self.p, self.q, pmin, pmax)
-            
+        # cutting the upper and lower pressure boundaries of the data
+        self.p_res, self.q_res = restrict_isotherm(self.p, self.q, self.opts['pmin'], self.opts['pmax'])
+
+        #calculate pore structure parameters 
+        self.vpore_total, self.vpore_micro, self.vpore_meso = get_porosity(self.p_res, self.q_res, gas_type=self.opts['gas_type'])
+        self.Davg, self.LP, self.Dp, self.dV_desorp, self.k = BJH(self.p_res, self.q_res, self.opts['gas_type'])
+        self.Vp, self.Vp_ccum, self.Vp_dlogD = result_psd(self.Davg, self.LP, self.Dp, self.k)
+        return self
 
     def plot_isotherm(self):
         figure = plt.figure()
         legend = []
         legend_raw, = plt.plot(self.p_raw,self.q_raw,'ko-',label='raw iso')
         legend.append(legend_raw)
-        if self.use_pressure:
+        if self.opts['use_pressure']:
             legend_fix, = plt.plot(self.p, self.q, 'r.',label='fixed iso')
             legend.append(legend_fix)
         plt.legend(handles=legend,loc=4)
         plt.grid()
-
-
-    def do_BJH(self):
-        #calculate porosity 
-        self.vpore_total, self.vpore_micro, self.vpore_meso = get_porosity(self.p_res,self.q_res,gas_type=self.gas_type)
-        self.Davg, self.LP, self.Dp, self.dV_desorp, self.k = BJH(self.p_res, self.q_res, self.gas_type)
-        self.Vp, self.Vp_ccum, self.Vp_dlogD = result_psd(self.Davg, self.LP, self.Dp, self.k)
-
 
     def plot_BJH_psd(self,plot_type = 'incremental', ax = None):
         figure = plt.figure()
